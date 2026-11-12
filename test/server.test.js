@@ -1,10 +1,175 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {createApp} from '../server.js';
-test('authentication, CSRF, persistence, streaming, validation and deletion',async()=>{const dataDir=await mkdtemp(join(tmpdir(),'pi-chat-'));const token='test-only-token-1234567890123456';let aborted=false;const app=createApp({dataDir,token,agentFactory:opts=>{let listener;return {state:{messages:[...opts.initialState.messages]},subscribe(fn){listener=fn;return()=>{}},abort(){aborted=true},async prompt(text){this.state.messages.push({role:'user',content:text,timestamp:1});await listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'hello'}});this.state.messages.push({role:'assistant',content:[{type:'text',text:'hello'}],stopReason:'stop',timestamp:2})}}}});const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;let cookie='';const request=(path,method='GET',body,extra={})=>fetch(base+path,{method,headers:{cookie,...(body?{'content-type':'application/json'}:{}),...extra},body:body?JSON.stringify(body):undefined});try{assert.equal((await request('/api/sessions')).status,401);assert.equal((await request('/api/login','POST',{token:'bad'})).status,401);assert.equal((await request('/api/login','POST',{token},{origin:'https://evil.test'})).status,403);const login=await request('/api/login','POST',{token});assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];assert.match(login.headers.get('set-cookie'),/HttpOnly/);const session=await(await request('/api/sessions','POST')).json();assert.equal((await request('/api/sessions/'+session.id+'/messages','POST',{message:''})).status,400);const response=await request('/api/sessions/'+session.id+'/messages','POST',{message:'test'});const stream=await response.text();assert.match(stream,/event: delta/);assert.match(stream,/hello/);assert.match(stream,/event: done/);const saved=await(await request('/api/sessions/'+session.id)).json();assert.equal(saved.messages.length,2);assert.equal(saved.title,'test');assert.equal((await(await request('/api/sessions')).json()).length,1);assert.equal((await request('/api/sessions/not-an-id')).status,404);assert.equal((await request('/api/sessions/'+session.id,'DELETE')).status,200);assert.equal((await request('/api/sessions/'+session.id)).status,404);await request('/api/logout','POST');assert.equal((await request('/api/config')).status,401)}finally{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(dataDir,{recursive:true,force:true})}});
-test('requires a strong access token',()=>assert.throws(()=>createApp({token:'short'}),/24/));
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createApp } from "../server.js";
+test("authentication, CSRF, persistence, streaming, validation and deletion", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "pi-chat-"));
+  const token = "test-only-token-1234567890123456";
+  let aborted = false;
+  const app = createApp({
+    dataDir,
+    token,
+    mode: "standalone",
+    agentFactory: (opts) => {
+      let listener;
+      return {
+        state: { messages: [...opts.initialState.messages] },
+        subscribe(fn) {
+          listener = fn;
+          return () => {};
+        },
+        abort() {
+          aborted = true;
+        },
+        async prompt(text) {
+          this.state.messages.push({
+            role: "user",
+            content: text,
+            timestamp: 1,
+          });
+          await listener({
+            type: "message_update",
+            assistantMessageEvent: { type: "text_delta", delta: "hello" },
+          });
+          this.state.messages.push({
+            role: "assistant",
+            content: [{ type: "text", text: "hello" }],
+            stopReason: "stop",
+            timestamp: 2,
+          });
+        },
+      };
+    },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((r) => server.once("listening", r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  let cookie = "";
+  const request = (path, method = "GET", body, extra = {}) =>
+    fetch(base + path, {
+      method,
+      headers: {
+        cookie,
+        ...(body ? { "content-type": "application/json" } : {}),
+        ...extra,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  try {
+    assert.equal((await request("/api/sessions")).status, 401);
+    assert.equal(
+      (await request("/api/login", "POST", { token: "bad" })).status,
+      401,
+    );
+    assert.equal(
+      (
+        await request(
+          "/api/login",
+          "POST",
+          { token },
+          { origin: "https://evil.test" },
+        )
+      ).status,
+      403,
+    );
+    const login = await request("/api/login", "POST", { token });
+    assert.equal(login.status, 200);
+    cookie = login.headers.get("set-cookie").split(";")[0];
+    assert.match(login.headers.get("set-cookie"), /HttpOnly/);
+    const session = await (await request("/api/sessions", "POST")).json();
+    assert.equal(
+      (
+        await request("/api/sessions/" + session.id + "/messages", "POST", {
+          message: "",
+        })
+      ).status,
+      400,
+    );
+    const response = await request(
+      "/api/sessions/" + session.id + "/messages",
+      "POST",
+      { message: "test" },
+    );
+    const stream = await response.text();
+    assert.match(stream, /event: delta/);
+    assert.match(stream, /hello/);
+    assert.match(stream, /event: done/);
+    const saved = await (await request("/api/sessions/" + session.id)).json();
+    assert.equal(saved.messages.length, 2);
+    assert.equal(saved.title, "test");
+    assert.equal((await (await request("/api/sessions")).json()).length, 1);
+    assert.equal((await request("/api/sessions/not-an-id")).status, 404);
+    assert.equal(
+      (await request("/api/sessions/" + session.id, "DELETE")).status,
+      200,
+    );
+    assert.equal((await request("/api/sessions/" + session.id)).status, 404);
+    await request("/api/logout", "POST");
+    assert.equal((await request("/api/config")).status, 401);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+test("requires a strong access token", () =>
+  assert.throws(() => createApp({ token: "short" }), /24/));
 
-test('official pi Agent integration emits text and retains turns without live API',async()=>{
- const {Agent}=await import('@earendil-works/pi-agent-core');const {builtinModels}=await import('@earendil-works/pi-ai/providers/all');const {AssistantMessageEventStream}=await import('@earendil-works/pi-ai/utils/event-stream');
- const model=builtinModels().getModel('openai','gpt-4o-mini');const deltas=[];
- const agent=new Agent({initialState:{model,systemPrompt:'test',messages:[],tools:[]},streamFn:()=>{const stream=new AssistantMessageEventStream();const msg={role:'assistant',content:[{type:'text',text:'pi works'}],api:model.api,provider:model.provider,model:model.id,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:'stop',timestamp:Date.now()};queueMicrotask(()=>{stream.push({type:'start',partial:msg});stream.push({type:'text_delta',contentIndex:0,delta:'pi works',partial:msg});stream.push({type:'done',reason:'stop',message:msg});stream.end()});return stream}});
- agent.subscribe(e=>{if(e.type==='message_update'&&e.assistantMessageEvent.type==='text_delta')deltas.push(e.assistantMessageEvent.delta)});await agent.prompt('hello');assert.equal(deltas.join(''),'pi works');assert.equal(agent.state.messages.length,3);assert.equal(agent.state.messages[1].role,'user');await agent.prompt('again');assert.equal(agent.state.messages.length,5);
+test("official pi Agent integration emits text and retains turns without live API", async () => {
+  const { Agent } = await import("@earendil-works/pi-agent-core");
+  const { builtinModels } = await import("@earendil-works/pi-ai/providers/all");
+  const { AssistantMessageEventStream } =
+    await import("@earendil-works/pi-ai/utils/event-stream");
+  const model = builtinModels().getModel("openai", "gpt-4o-mini");
+  const deltas = [];
+  const agent = new Agent({
+    initialState: { model, systemPrompt: "test", messages: [], tools: [] },
+    streamFn: () => {
+      const stream = new AssistantMessageEventStream();
+      const msg = {
+        role: "assistant",
+        content: [{ type: "text", text: "pi works" }],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      };
+      queueMicrotask(() => {
+        stream.push({ type: "start", partial: msg });
+        stream.push({
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "pi works",
+          partial: msg,
+        });
+        stream.push({ type: "done", reason: "stop", message: msg });
+        stream.end();
+      });
+      return stream;
+    },
+  });
+  agent.subscribe((e) => {
+    if (
+      e.type === "message_update" &&
+      e.assistantMessageEvent.type === "text_delta"
+    )
+      deltas.push(e.assistantMessageEvent.delta);
+  });
+  await agent.prompt("hello");
+  assert.equal(deltas.join(""), "pi works");
+  assert.equal(agent.state.messages.length, 3);
+  assert.equal(agent.state.messages[1].role, "user");
+  await agent.prompt("again");
+  assert.equal(agent.state.messages.length, 5);
 });

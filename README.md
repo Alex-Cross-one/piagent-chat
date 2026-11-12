@@ -1,52 +1,72 @@
-# dot · pi workspace
+# dot message bridge · piagent-chat
 
-一个可以在 ChatGPT 外运行的私人中文聊天平台。浏览器界面 + Node.js 后端，使用 **pi 官方 `@earendil-works/pi-agent-core` / `pi-ai`**，不是套壳模拟回复。
+**目标：在自己的网页给当前同一个 dot 发消息，并接收它的回复。不是用另一个模型冒充 dot。**
 
-> 这是独立部署的助手，不是 ChatGPT 内同一个 dot 的远程入口。不会同步这里的会话、记忆、连接器、提醒或账户权限；ChatGPT 订阅也不包含本应用的模型 API 费用。需要你自己的模型 API key。首版没有联网搜索、交易、命令执行或后台提醒工具。
+默认 `CHAT_MODE=bridge`。本版提供经认证的 MCP Events 消息桥接原型。**代码和本地协议测试完成，不等于已连接你的 dot**：需要部署/隧道、OAuth 配置、安装插件，并在当前 dot 中订阅及验证真实往返。
 
-## 功能
+## 工作方式
 
-- 桌面 / 手机自适应界面，中文优先，流式输出与停止生成。
-- 多会话、服务端持久化、JSON 导出与确认删除。
-- 访问口令登录，HttpOnly / SameSite cookie；密钥永远留在服务端。
-- 配置模型和提供商；默认 OpenAI `gpt-4o-mini`。
-- Docker、基础 CI 与不消耗模型额度的集成测试。
+```
+外部网页 → 已登录的私人服务端 → message.created webhook
+                                      ↓
+                               当前 dot 的订阅聊天
+                                      ↓
+                 bridge_read_message / bridge_reply
+                                      ↓
+                             网页异步显示回信
+```
 
-## 5 分钟本地启动
+- 网页发送的内容由服务端存储。事件只携带消息 ID，由 dot 通过读取工具获取内容。
+- dot 自己调用回信工具，网页轮询显示实际回信。不会调用 pi 模型自动替代 dot 回复。
+- 支持新会话、持久化、导出、确认删除、手机布局。
+- 订阅采用标准 webhook 签名、回调挑战验证、幂等订阅/回信、持久队列、限次重试、到期停止。
+- 回调仅允许公网 HTTPS，DNS 解析后固定连接 IP，拒绝私网和重定向。
+- OAuth JWT 校验 issuer / audience / signature / scope / owner subject；网页口令和 MCP OAuth 分离。
+- 首版是异步消息通道，不是逐 token 的原生 dot API，不镜像 ChatGPT 全量聊天。会话和能力留在真正的 dot 中，不导出内部记忆。
 
-需要 Node.js 24（最低 22，建议 24）。
+## 当前状态与边界
+
+本地模拟了浏览器发送 → 签名通知 → MCP 读取 → 幂等回信 → 网页可读取的完整协议链，使用测试认证/测试回调。**未完成真实 ChatGPT 插件安装、真实 OAuth 提供商联调、dot 事件订阅及回信验证**。浏览器图形测试也受当前构建环境限制未完成。
+
+MCP Events 官方文档明确支持 dots，但实际可用性仍取决于账户/工作区设置。`2xx` 仅代表 webhook 收到，不表示 dot 已回复；界面会区分未连接、已订阅未验证、收到回信。插件被绑定到哪个聊天，必须由用户在那个聊天明确订阅并通过测试码确认。协议本身不提供可验证的 dot 身份标识。
+
+## 本地查看界面
+
+需要 Node.js 24（建议）或 22。
 
 ```bash
-git clone https://github.com/Alex-Cross-one/piagent-chat.git
-cd piagent-chat
 npm ci
 cp .env.example .env
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-把生成的随机字符串写入 `.env` 的 `CHAT_ACCESS_TOKEN`，把自己的 API key 写入 `PI_API_KEY`。不要把密钥发到聊天、写入源码或提交到 GitHub。
+把随机字符串写入 `.env` 的 `CHAT_ACCESS_TOKEN`，然后 `npm start`，打开 http://localhost:3000。此时可以查看界面、保存消息，但未订阅的消息**不会送达 dot**，连接后需手动重发。不要把这种状态当作可用聊天室。
 
-```bash
-npm start
-```
+## 接通真正的 dot
 
-打开 http://localhost:3000，用 `CHAT_ACCESS_TOKEN` 登录。
+详见 [部署与接通步骤](docs/CONNECT_DOT.md)。至少需要：
 
-`PI_PROVIDER` / `PI_MODEL` 必须是 pi 模型目录中的有效组合。默认模型只是低成本起点，可自行换成所用提供商支持的型号。可以运行以下命令查看目录：
+1. 持续运行 Node 服务，并有公开 HTTPS 地址，或官方支持的 Secure MCP Tunnel。
+2. 配置兼容 MCP 的 OAuth 2.1 授权服务器及单一用户 subject。此仓库校验 JWT，不内置授权服务器或伪造登录。
+3. 在 ChatGPT Plugins 添加自定义 MCP 服务并授权；发现 `message.created`、读取和回信工具。
+4. 在**要继续对话的那个 dot 聊天**明确订阅并授权该消息通道的读取与回复。
+5. 网页发送随机测试码，确认同一个 dot 收到并通过回信工具返回。直到这一步完成才能称为接通。
 
-```bash
-node --input-type=module -e "import {getBuiltinModels} from '@earendil-works/pi-ai/providers/all'; console.log(getBuiltinModels('openai').map(m=>m.id).join('\n'))"
-```
+桥接模式不需要 `PI_API_KEY`，也不利用 ChatGPT 网页 cookie、内部接口或会话抓取。
 
-## Docker 与远程访问
+## pi agent 的作用
+
+依然包含官方 pi agent 的独立模式，方便开发及回归测试：显式设置 `CHAT_MODE=standalone` 并配置 `PI_API_KEY` / `PI_PROVIDER` / `PI_MODEL`。该模式使用 `@earendil-works/pi-agent-core` 1.5.2，**不是当前 dot**，不会自动同步其记忆/提醒/工具；界面会标记独立模型回复。生产默认桥接模式不会调用它。
+
+不把 pi 的输出伪装成当前 dot，也不以购买 API 额度代替真正的 dot 接入。
+
+## 部署
 
 ```bash
 docker compose up -d --build
 ```
 
-默认只绑定主机 `127.0.0.1:3000`。远程访问需要你自己的服务器与域名，并在前方配置 HTTPS 反向代理（例如 Caddy）。不要直接把未加密 HTTP 端口暴露到公网。
-
-Caddy 示例（替换为你控制的域名）：
+Docker 默认绑定 `127.0.0.1:3000`。在前方配置 HTTPS 反向代理，例如 Caddy；设置 `COOKIE_SECURE=true`。MCP、OAuth metadata、网页都必须可达。反向代理保留 Host，SSE 不缓冲。不要直接开放明文端口。
 
 ```caddy
 chat.example.com {
@@ -54,34 +74,33 @@ chat.example.com {
 }
 ```
 
-设 `COOKIE_SECURE=true` 后重启应用；代理必须保留原 Host，关闭 SSE 缓冲并允许至少 120 秒请求。反向代理、域名、TLS 和公网部署需另外配置，本仓库上传不代表已经部署上线。GitHub Pages 无法运行此 Node.js 后端。
+GitHub Pages 无法运行后端。仓库上传不等于部署上线。当前单进程文件存储设计，不要启动多个副本共享同一数据目录。
 
-## 数据与安全边界
+## 安全和运维
 
-- 单人部署设计：持有同一访问口令的人能查看/删除全部会话。不是多租户系统。
-- 会话以 JSON 明文存入 `data/`（Docker 使用持久卷），不提交仓库。请保护服务器、加密磁盘并定期备份。应用删除不等于删除备份。
-- 口令只保存在服务端配置；会话 cookie 有效 24 小时，重启后失效。登录有基本频率限制，但公网建议额外使用反向代理限流。
-- 模型提供商会收到本次输入与最近最多 40 条成功历史消息；本地保存完整聊天。较早内容不进入上下文，没有自动记忆。请先了解提供商数据政策。
-- 对话错误细节不直接展示，避免暴露密钥；没有 shell/文件访问工具。输出按纯文本显示，不执行模型返回的 HTML。
-- 每次生成最多 120 秒；最多并发 3 个会话。API 用量由提供商计费，请设置额度限制。
-- `.env`、`data/`、依赖目录已忽略。不要把真实配置加入 Git。
+- 单人服务：持有网页访问口令的人能读写全部会话。保护口令、服务器和备份。
+- `data/` 中明文存储会话、订阅回调和签名密钥，文件权限受限且被 git 忽略；建议加密磁盘，切勿公开挂载或提交这些文件。
+- OAuth 配置只接受单一 `MCP_OWNER_SUBJECT`，scope 为 `bridge`，JWT audience 必须严格匹配 `MCP_RESOURCE_URL`。
+- OAuth 授权服务器负责登录、PKCE、令牌签发和客户端注册；本应用只做 JWT 校验，不支持 opaque token。撤权后应取消订阅并重启服务/更改 owner 或设 `BRIDGE_DELIVERY_ENABLED=false`，以立即停止旧订阅。JWT 离线验证不能即时感知授权服务器的令牌撤销。
+- 订阅最多 24 小时，客户端需要刷新；秘密轮换有短重叠窗口。订阅重启后保留。
+- 每条事件最多 5 次尝试，指数退避；410/413 不重试。无回放 cursor，断连时或未订阅时保存的消息不会自动重发。事件可能乱序或重复，回信工具以幂等键避免重复。
+- 只部署一个实例；定期备份。文件存储跨文件操作不是事务数据库，极端崩溃时可能需要人工重发。
+- 外部消息是数据，不自动授予 dot 执行高影响操作的权限。付款、发布、敏感数据等仍遵守 dot 的确认规则。
 
 ## 验证
 
 ```bash
+npm ci
 npm run check
 npm test
 npm audit --omit=dev
 ```
 
-测试覆盖登录、未授权访问、跨源请求阻止、会话创建/读取/删除、SSE、持久化及输入校验，使用模拟 agent，不调用真实模型。真实 API 的回答质量、账单及联网可用性需要配置你的 API key 后验证。
+测试包含：鉴权、CSRF、持久化、真实 pi Agent 模拟流；MCP 发现、订阅幂等、挑战失败、标准签名、稳定事件 ID 重试、读取/回信、回信去重、重启持久化、取消订阅、回调地址防护。模拟测试不等同于真实 dot 接通。
 
-## 架构与来源
+## 官方资料
 
-`public/` 无构建步骤静态前端 → `server.js` Express API / SSE → pi `Agent` → 模型提供商。
-
-- pi 官方项目：https://github.com/earendil-works/pi
-- agent 核心：https://www.npmjs.com/package/@earendil-works/pi-agent-core
-- 模型层：https://www.npmjs.com/package/@earendil-works/pi-ai
-
-旧 `@mariozechner` 包已由 npm 标记迁移到 `@earendil-works`，本项目采用新包名并锁定依赖版本。
+- [MCP Events](https://developers.openai.com/plugins/build/mcp-events)
+- [MCP 认证](https://developers.openai.com/plugins/build/auth)
+- [连接与测试插件](https://developers.openai.com/plugins/deploy/connect-chatgpt)
+- [pi 官方项目](https://github.com/earendil-works/pi)

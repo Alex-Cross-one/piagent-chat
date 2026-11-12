@@ -1,1 +1,26 @@
-{"name":"piagent-chat","version":"1.0.0","private":true,"type":"module","description":"Private standalone chat powered by pi agent","engines":{"node":">=22"},"scripts":{"start":"node --env-file-if-exists=.env server.js","test":"node --test","check":"node --check server.js && node --check public/app.js"},"dependencies":{"@earendil-works/pi-agent-core":"1.5.2","@earendil-works/pi-ai":"1.5.2","express":"^5.2.1"}}
+{
+  "name": "piagent-chat",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Authenticated MCP Events bridge to an existing dot, with optional independent pi agent mode",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check bridge.js && node --check webhook.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.5.2",
+    "@earendil-works/pi-ai": "1.5.2",
+    "express": "^5.2.1",
+    "ipaddr.js": "2.5.0",
+    "jose": "6.2.17",
+    "standardwebhooks": "1.1.1"
+  },
+  "devDependencies": {
+    "prettier": "3.10.0"
+  }
+}

@@ -1,6 +1,6 @@
 // Owner-private Sites deployment. Identity is supplied and protected by Sites.
 // No model API, browser cookie scraping, or production authentication bypass.
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const EVENT = "message.created";
 const ALLOWED_CALLBACK_HOSTS = new Set(["chatgpt.com", "api.openai.com"]);
 const uuid = (x) =>
@@ -350,7 +350,14 @@ async function rpc(db, owner, method, p, fetcher) {
     };
   if (method === "events/subscribe" || method === "events/unsubscribe") {
     if (
-      !shape(p, ["name", "arguments", "delivery", "cursor", "ttlMs"]) ||
+      !shape(p, [
+        "name",
+        "arguments",
+        "delivery",
+        "cursor",
+        "ttlMs",
+        "_meta",
+      ]) ||
       p.name !== EVENT ||
       !shape(p.arguments, ["channel_id"]) ||
       p.arguments.channel_id !== "owner" ||
@@ -791,6 +798,46 @@ export function createHandler(fetcher = fetch) {
             );
             response = json({ jsonrpc: "2.0", id: b.id ?? null, result });
           } catch (e) {
+            if (
+              b.method === "events/subscribe" ||
+              b.method === "events/unsubscribe"
+            ) {
+              let callbackHost = "invalid";
+              try {
+                callbackHost = new URL(b.params?.delivery?.url).hostname;
+              } catch {}
+              console.error(
+                "bridge_event_error",
+                JSON.stringify({
+                  method: b.method,
+                  code: e.rpcCode || -32603,
+                  reason: e.status ? e.message : "Internal bridge error",
+                  has_meta: !!b.params?._meta,
+                  has_name: typeof b.params?.name === "string",
+                  has_arguments: !!b.params?.arguments,
+                  delivery_mode:
+                    b.params?.delivery?.mode === "webhook"
+                      ? "webhook"
+                      : "other",
+                  callback_host: callbackHost,
+                  unknown_param_count: Object.keys(b.params || {}).filter(
+                    (k) =>
+                      ![
+                        "name",
+                        "arguments",
+                        "delivery",
+                        "cursor",
+                        "ttlMs",
+                        "_meta",
+                      ].includes(k),
+                  ).length,
+                  unknown_delivery_count: Object.keys(
+                    b.params?.delivery || {},
+                  ).filter((k) => !["mode", "url", "secret"].includes(k))
+                    .length,
+                }),
+              );
+            }
             response = json({
               jsonrpc: "2.0",
               id: b.id ?? null,

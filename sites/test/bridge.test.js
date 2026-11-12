@@ -478,3 +478,16 @@ test("foreign keys reject late writes after session deletion and cascade replies
     /FOREIGN KEY/,
   );
 });
+test("event subscriptions accept standard MCP request metadata", async () => {
+  const x = await setup();
+  const result = await x.rpc("events/subscribe", {
+    ...x.subscription,
+    _meta: { progressToken: "metadata-is-not-a-filter" },
+  });
+  assert.ok(result.result?.id);
+  assert.deepEqual(
+    (await x.rpc("events/unsubscribe", { ...x.subscription, _meta: {} }))
+      .result,
+    {},
+  );
+});

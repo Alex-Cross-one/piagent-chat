@@ -7,7 +7,7 @@
 ## 当前验收状态
 
 - Worker / D1 逻辑和 MCP Events 协议模拟测试通过。
-- 私人 Site 已成功发布，MCP 插件已由平台生成；尚未验证插件安装和事件订阅。
+- 私人 Site 已成功发布，MCP 插件已安装，真实 bridge_status 可调用；事件订阅尚未通过。
 - 网页：https://dot-private-message-bridge.fizzy-tulip-7700.chatgpt.site （仅所有者可访问）。
 - **尚未完成真实 dot 的订阅、回调与随机码往返，不算接通。**
 - 不调用模型 API，不使用 ChatGPT 浏览器 cookie 或内部接口，不导出 dot 的内部记忆。

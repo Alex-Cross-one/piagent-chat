@@ -1,8 +1,12 @@
 // Owner-private Sites deployment. Identity is supplied and protected by Sites.
 // No model API, browser cookie scraping, or production authentication bypass.
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 const EVENT = "message.created";
-const ALLOWED_CALLBACK_HOSTS = new Set(["chatgpt.com", "api.openai.com"]);
+const ALLOWED_CALLBACK_HOSTS = new Set([
+  "chatgpt.com",
+  "api.openai.com",
+  "connectors.api.openai.com",
+]);
 const uuid = (x) =>
   typeof x === "string" &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(x);

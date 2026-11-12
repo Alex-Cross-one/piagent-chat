@@ -107,4 +107,4 @@ npm audit --omit=dev
 
 ## Sites 私有托管版
 
-新增 [sites/](sites/) Worker + D1 移植，网页和 MCP 由平台身份保护，无需另配 OAuth 提供商。私有网页已发布：https://dot-private-message-bridge.fizzy-tulip-7700.chatgpt.site 。**插件安装、当前 dot 的 Events 订阅和真实随机码往返尚未验收，不能当作已接通。** 根目录的 Node 原型继续保留。
+新增 [sites/](sites/) Worker + D1 移植，网页和 MCP 由平台身份保护，无需另配 OAuth 提供商。私有网页已发布：https://dot-private-message-bridge.fizzy-tulip-7700.chatgpt.site 。**插件安装和只读工具调用已验收，当前 dot 的 Events 订阅和真实随机码往返尚未验收，不能当作已接通。** 根目录的 Node 原型继续保留。

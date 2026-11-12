@@ -491,3 +491,22 @@ test("event subscriptions accept standard MCP request metadata", async () => {
     {},
   );
 });
+test("observed OpenAI connector callback host is explicitly allowed", async () => {
+  const x = await setup();
+  assert.equal(
+    callbackURL("https://connectors.api.openai.com/test"),
+    "https://connectors.api.openai.com/test",
+  );
+  assert.throws(() =>
+    callbackURL("https://evil.connectors.api.openai.com/test"),
+  );
+  const result = await x.rpc("events/subscribe", {
+    ...x.subscription,
+    delivery: {
+      ...x.subscription.delivery,
+      url: "https://connectors.api.openai.com/test",
+    },
+    _meta: {},
+  });
+  assert.ok(result.result?.id);
+});

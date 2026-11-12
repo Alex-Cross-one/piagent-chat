@@ -48,7 +48,7 @@ Webhook 的 2xx 只表示收到事件，不能当作 dot 已回复。收到 MCP 
 ## 安全边界与限制
 
 - 网页在未订阅时只保存消息，连接后不自动补发旧消息。
-- Callback 严格限定为 HTTPS 的 `chatgpt.com` 或 `api.openai.com`，拒绝凭证、非标准端口和重定向。Worker 不使用可由订阅方任意选择的域名，因此不需要接受任意 DNS 目标。若实际 OpenAI callback 使用其他 hostname，默认拒绝并报告；先核实其来源和所有权再改 allowlist，绝不为跑通而移除限制。
+- Callback 严格限定为 HTTPS 的 `chatgpt.com`、`api.openai.com` 或 `connectors.api.openai.com`，拒绝凭证、非标准端口和重定向。Worker 不使用可由订阅方任意选择的域名，因此不需要接受任意 DNS 目标。`connectors.api.openai.com` 已由实际平台订阅请求确认。若实际 OpenAI callback 使用其他 hostname，默认拒绝并报告；先核实其来源和所有权再改 allowlist，绝不为跑通而移除限制。
 - 签名使用 Standard Webhooks HMAC-SHA256。签名秘密只存在服务端 D1，不发到网页、不写日志或源代码。订阅更新使用 revision 防止取消后被在途验证重新激活。
 - 订阅最多 24 小时，需要客户端刷新。取消订阅后停止新的投递，但已经在途或已被接收的事件无法撤回。
 - Outbox 持久存储，最多尝试 5 次；410、413、重定向不重试。请求触发队列处理，网页打开时轮询会推动重试，**关闭网页后不保证无人值守重试**。

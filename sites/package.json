@@ -1,0 +1,15 @@
+{
+  "name": "dot-private-message-bridge-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "validate": "node scripts/validate-artifact.mjs",
+    "test": "node --test test/*.test.js",
+    "check": "node --check worker/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
